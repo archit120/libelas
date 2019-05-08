@@ -122,6 +122,8 @@ int main(int argc, char **argv)
     cap2 >> frameR;
     cvtColor(frameL, lg, COLOR_RGB2GRAY);
     cvtColor(frameR, rg, COLOR_RGB2GRAY);
+    equalizeHist( frameL, frameL );
+    equalizeHist( frameR, frameR );
     if (!p)
     {
       DispL = Mat(frameL.size().height, frameL.size().width, CV_32FC1);
