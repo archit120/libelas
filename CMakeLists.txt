@@ -17,6 +17,12 @@ FILE(GLOB LIBELAS_SRC_FILES "src/*.cpp")
 # make release version
 set(CMAKE_BUILD_TYPE Release)
 
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+
+
+
+
 # build demo program
 add_executable(elas ${LIBELAS_SRC_FILES})
-
+target_link_libraries( elas ${OpenCV_LIBS} )
