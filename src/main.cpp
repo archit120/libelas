@@ -16,7 +16,7 @@ PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License along with
 libelas; if not, write to the Free Software Foundation, Inc., 51 Franklin
-Street, Fifth Floor, Boston, MA 02110-1301, USA 
+//Street, Fifth Floor, Boston, MA 02110-1301, USA 
 */
 
 // Demo program showing how libelas can be used, try "./elas -h" for help
@@ -47,17 +47,17 @@ void process(Mat l, Mat r, Mat &disl, Mat &disr)
   elas.process(l.data, r.data, (float *)disl.data, (float *)disr.data, dims);
 
   // find maximum disparity for scaling output disparity images to [0..255]
-  /*float displ_max = 0, dispr_max=0;
+  float displ_max = 0, dispr_max=0;
   for (int32_t i=0; i<width*height; i++) {
     if (((float*)disl.data)[i]>displ_max) displ_max = ((float*)disl.data)[i];
     if (((float*)disr.data)[i]>dispr_max) dispr_max = ((float*)disr.data)[i];
   }
-  cout << displ_max<<"\n";*/
+ // cout << displ_max<<"\n";
   // copy float to uchar
   for (int32_t i = 0; i < width * height; i++)
   {
-    ((float *)disl.data)[i] = ((float *)disl.data)[i] / 255.0;
-    ((float *)disr.data)[i] = ((float *)disr.data)[i] / 255.0;
+    ((float *)disl.data)[i] = ((float *)disl.data)[i] / displ_max;
+    ((float *)disr.data)[i] = ((float *)disr.data)[i] / dispr_max;
   }
 
   // save disparity images
@@ -68,8 +68,8 @@ int main(int argc, char **argv)
 
   // run demo
   cout << "Read video files\n";
-  VideoCapture cap("Left_video.avi");
-  VideoCapture cap2("Right_video.avi");
+  VideoCapture cap("Left_video.avi", 0);
+  VideoCapture cap2("Right_video.avi", 0);
 
   // Check if camera opened successfully
   if (!cap.isOpened() || !cap2.isOpened())
@@ -107,15 +107,21 @@ int main(int argc, char **argv)
   initUndistortRectifyMap(intrinsic_right, disCoeffs_right, R_right, P_right, imgsize, CV_32F, Rmap1, Rmap2);
 
   Mat DispL, DispR;
+  Mat lg, rg;
   bool p = false;
+  int frame_num=100;
+  int tempframe=0;
   while (1)
-  {
+  { 
+    tempframe++;
 
     Mat frameL;
     Mat frameR;
     // Capture frame-by-frame
     cap >> frameL;
     cap2 >> frameR;
+    cvtColor(frameL, lg, COLOR_RGB2GRAY);
+    cvtColor(frameR, rg, COLOR_RGB2GRAY);
     if (!p)
     {
       DispL = Mat(frameL.size().height, frameL.size().width, CV_32FC1);
@@ -126,16 +132,20 @@ int main(int argc, char **argv)
     if (frameL.empty() || frameR.empty())
       break;
 
-    remap(frameL, frameL, Lmap1, Lmap2, INTER_LINEAR);
-    remap(frameR, frameR, Rmap1, Rmap2, INTER_LINEAR);
+    remap(lg, lg, Lmap1, Lmap2, INTER_LINEAR);
+    remap(rg, rg, Rmap1, Rmap2, INTER_LINEAR);
 
-    process(frameL, frameR, DispL, DispR);
+    process(lg, rg, DispL, DispR);
     // DisplaLy the resulting frame
-    imshow("Leftv", frameL);
-    imshow("Rightv", frameR);
+    imshow("Leftv", lg);
+    imshow("Rightv", rg);
     imshow("Leftd", DispL);
     imshow("Rightd", DispR);
-
+    if(tempframe==frame_num)
+    {
+      imwrite("left.png",frameL);
+      imwrite("right.png",frameR);
+    }
     // Press  ESC on keyboard to exit
     char c = (char)waitKey(25);
     if (c == 27)

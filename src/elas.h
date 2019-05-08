@@ -82,7 +82,7 @@ public:
     bool    subsampling;            // saves time by only computing disparities for each 2nd pixel
                                     // note: for this option D1 and D2 must be passed with size
                                     //       width/2 x height/2 (rounded towards zero)
-    
+	    
     // constructor
     parameters (setting s=ROBOTICS) {
       
@@ -91,7 +91,7 @@ public:
       //  and are a bit more robust towards lighting etc.)
       if (s==ROBOTICS) {
         disp_min              = 0;
-        disp_max              = 255;
+        disp_max              = 500;
         support_threshold     = 0.85;
         support_texture       = 10;
         candidate_stepsize    = 5;
