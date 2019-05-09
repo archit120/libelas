@@ -15,10 +15,14 @@
 #include <string>
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/cl.h>
-
+#include <cmath>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+
+#include <iostream>
+
+using namespace std;
 using namespace cv;
 
 #include "vec234.h"
@@ -33,6 +37,8 @@ using namespace cv;
 #include "../src/elas.h"
 Mat Lmap1, Lmap2, Rmap1, Rmap2;
 Mat DispL, DispR;
+float displ_max = 0, dispr_max = 0;
+int min_mean = 0, min_variance = 0;
 
 // compute disparities of pgm image input pair file_1, file_2
 void process(Mat l, Mat r)
@@ -52,7 +58,6 @@ void process(Mat l, Mat r)
   elas.process(l.data, r.data, (float *)DispL.data, (float *)DispR.data, dims);
 
   // find maximum disparity for scaling output disparity images to [0..255]
-  float displ_max = 0, dispr_max = 0;
   for (int32_t i = 0; i < width * height; i++)
   {
     if (((float *)DispL.data)[i] > displ_max)
@@ -70,15 +75,50 @@ void process(Mat l, Mat r)
 
   // save disparity images
 }
+bool check_angle(Point a, Point b, Point c)
+{
+  float ag = abs(atan2(abs(b.y - a.y), abs(b.x - a.x)) - atan2(abs(c.y - a.y) , abs(c.x - a.x)));
+  return ag > 3.14 / 4 && ag < 3.14 / 2;
+}
+bool checkRect(Rect a, rect_t c)
+{
+  if (a.height * a.width < 1600)
+    return 0;
+  for (int i = 1; i <= 4; i++)
+  {
+    bool ag = check_angle(Point(c.c2[i % 4].a[0], c.c2[i % 4].a[1]), Point(c.c2[(i + 1) % 4].a[0], c.c2[(i + 1) % 4].a[1]), Point(c.c2[(i - 1) % 4].a[0], c.c2[(i - 1) % 4].a[1]));
+    if (!ag)
+      return false;
+  }
+  return true;
+}
 
 static void showRect(rect_t rect, int r, int g, int b, int thickness, Mat &img)
 {
   int font = FONT_HERSHEY_SCRIPT_SIMPLEX;
   std::ostringstream ss;
-ss << DispL.at<float>(cvPoint((int)rect.c2[0].a[0], (int)rect.c2[0].a[1]));
-std::string s(ss.str()); 
-float d = DispL.at<float>(cvPoint(rect.c2[0].a[0], rect.c2[0].a[1]));
-if(d>0)return;
+  float d = DispL.at<float>(cvPoint(rect.c2[0].a[0], rect.c2[0].a[1]));
+  if (d < 0)
+    return;
+  d *= displ_max;
+
+  Rect rec(cvPoint(rect.c2[1].a[0], rect.c2[1].a[1]), cvPoint(min(752, (int)rect.c2[3].a[0]), min(480, (int)rect.c2[3].a[1])));
+  if (rec.height == 0 || rec.width == 0 || rec.x < 0 || rec.y < 0)
+    return;
+  if (rec.height * rec.width < 1600)
+    return;
+
+    if(!checkRect(rec, rect)) return;
+  Mat ROI = DispL(rec);
+
+  Scalar mean, dev;
+  // ss << "h";
+  meanStdDev(ROI, mean, dev);
+  if ((int)(mean[0] * displ_max) < min_mean || mean[0] < 0 || dev[0] * displ_max < 3)
+    return;
+  //cout << min_mean - mean[0]*displ_max << "\n";
+  ss << dev[0] * displ_max << " h " << mean[0] * displ_max;
+  std::string s(ss.str());
   for (int i = 0; i < 4; i++)
   {
     line(img, cvPoint(rect.c2[i].a[0], rect.c2[i].a[1]), cvPoint(rect.c2[(i + 1) % 4].a[0], rect.c2[(i + 1) % 4].a[1]), Scalar(r, g, b), thickness, 8, 0);
@@ -91,17 +131,14 @@ if(d>0)return;
   line(img,
        cvPoint(rect.c2[1].a[0], rect.c2[1].a[1]),
        cvPoint(rect.c2[3].a[0], rect.c2[3].a[1]), Scalar(r, g, b), 1, 8, 0);
-  
 
-  putText(img, s.c_str(), cvPoint(rect.c2[0].a[0], rect.c2[0].a[1]), font,1,(255,255,255),2);
-
+  putText(img, s.c_str(), cvPoint(rect.c2[3].a[0], rect.c2[3].a[1]), font, 1, (255, 255, 255), 2);
 }
 
 static int fourcc(const char *s)
 {
   return (((uint32_t)s[0]) << 0) | (((uint32_t)s[1]) << 8) | (((uint32_t)s[2]) << 16) | (((uint32_t)s[3]) << 24);
 }
-
 
 void recitfy()
 {
@@ -150,7 +187,7 @@ int main(int argc, char **argv)
   VideoWriter *writer = NULL;
   const char *winname = "Rectangle Detection Demo";
 
-  namedWindow(winname, WINDOW_AUTOSIZE);
+  namedWindow(winname, WINDOW_NORMAL);
   writer = new VideoWriter("out_left.avi", fourcc("PIM1"), 30, cvSize(iw, ih), true);
   VideoWriter *writerR = new VideoWriter("out_right.avi", fourcc("PIM1"), 30, cvSize(iw, ih), true);
   if (!writer->isOpened() || !writerR->isOpened())
@@ -207,20 +244,21 @@ int main(int argc, char **argv)
 
   Mat l2img(imgsize, CV_8UC1);
   Mat r2img(imgsize, CV_8UC1);
+  createTrackbar("mean", winname, &min_mean, 100);
+
   for (;;)
   {
     if (!cap->retrieve(vimg, 0) || !capR->retrieve(rimg, 0))
       break;
-    //remap(vimg, vimg, Lmap1, Lmap2, INTER_LINEAR);
+    remap(vimg, vimg, Lmap1, Lmap2, INTER_LINEAR);
     //
-    ///remap(rimg, rimg, Rmap1, Rmap2, INTER_LINEAR);
+    remap(rimg, rimg, Rmap1, Rmap2, INTER_LINEAR);
     //equalizeHist(rimg, rimg);
 
     cvtColor(vimg, l2img, COLOR_RGB2GRAY);
     equalizeHist(l2img, l2img);
 
     //Canny( vimg, vimg, 25, 150, 3 );
-
 
     cvtColor(rimg, r2img, COLOR_RGB2GRAY);
     equalizeHist(r2img, r2img);
@@ -269,7 +307,7 @@ int main(int argc, char **argv)
     }
 
     imshow(winname, img[nFrame & 1]);
-    imshow("dis",DispL);
+    imshow("dis", DispL);
     int key = waitKey(1) & 0xff;
     if (key == 27 || key == 13)
       break;
@@ -286,7 +324,8 @@ int main(int argc, char **argv)
 
   if (writer != NULL)
     delete writer;
-  delete cap;delete capR;
+  delete cap;
+  delete capR;
   destroyAllWindows();
 
   //
