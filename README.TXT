@@ -1,6 +1,15 @@
-Callibration matrices stored in src/main.cpp
+Callibration matrices stored in src/main.cpp and rectdetect/vidrect.cpp
+main file is rectdetect/vidrect.cpp
 
+to build
+cmake .
+make
 
+binary is vidrect
+
+video files named Left_video.avi and Right_video.avi
+
+video links : https://drive.google.com/folderview?id=1-DUU8sNljf899GBdLKfJr9RYv1bkGMMa
 
 
 ####################################################################################
